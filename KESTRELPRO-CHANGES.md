@@ -18,3 +18,13 @@ by the KestrelPro project; every changed upstream line is marked `kestrelpro:beg
 - `src/start.sh`: starts the engine once FTL is up, and stops it before FTL.
 - `src/kestrelpro.sh` (new): engine supervision, restart with backoff, nice 10,
   `oom_score_adj=1000`. FTL never waits for it; `KESTREL_ENGINE=off` disables it.
+
+## 2026-10-29: kestrelpro/2026.10.0-k1
+
+- `src/kestrelpro.sh`: `prepare_kestrel_ui`, run before FTL starts. Writes the engine's
+  address for the admin UI (`scripts/js/kestrel/config.js`) from `KESTREL_ENGINE_URL` /
+  `KESTREL_ENGINE_PORT`. When the browser reaches the engine on its own port, adds
+  `http://*:<port>` to `connect-src` in FTL's Content-Security-Policy, which otherwise
+  allows `'self'` only. Custom headers it can't parse are left alone, with a warning.
+- `src/start.sh`: calls it right after `ftl_config`.
+- `src/Dockerfile`: the engine no longer ships its own dashboard.

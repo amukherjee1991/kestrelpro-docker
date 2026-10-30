@@ -21,6 +21,44 @@ ftl_http_url() {
     echo "http://127.0.0.1:${port:-80}"
 }
 
+# Tell the admin UI where the engine is, and let the browser reach it. Runs before FTL starts.
+#   KESTREL_ENGINE_URL   engine API on the admin UI's own origin, e.g. /admin/api/kestrel behind a
+#                        reverse proxy. Unset: the browser calls the engine on KESTREL_ENGINE_PORT.
+#   KESTREL_ENGINE_PORT  the engine's published port (default 8090).
+prepare_kestrel_ui() {
+    local url="${KESTREL_ENGINE_URL:-}" port="${KESTREL_ENGINE_PORT:-8090}" raw headers new
+    if ! [[ "${port}" =~ ^[0-9]+$ ]]; then
+        echo "  [!] KESTREL_ENGINE_PORT must be a number, using 8090"
+        port=8090
+    fi
+    jq -n --arg url "${url}" --argjson port "${port}" \
+        '"/* Written by the container at start-up (kestrelpro.sh). */\nglobalThis.kestrelConfig = \({engineUrl: $url, enginePort: $port});"' -r \
+        > /var/www/html/admin/scripts/js/kestrel/config.js
+
+    # Cross-port: FTL's default Content-Security-Policy only allows connect-src 'self', which
+    # blocks the pages' calls to the engine. Add the engine's port to connect-src.
+    [ "${KESTREL_ENGINE:-on}" = "off" ] && return 0
+    [ -n "${url}" ] && return 0
+    # FTL prints the array unquoted: "[ Name: value, Name: value ]". Split it, and give up if
+    # any element isn't a "Name: value" header (a header containing ", " would be split wrongly).
+    raw=$(getFTLConfigValue webserver.headers 2>/dev/null) || return 0
+    headers=$(jq -Rc 'ltrimstr("[ ") | rtrimstr(" ]") | split(", ")
+                      | if all(test("^[A-Za-z0-9-]+: ")) then . else error("unparsed") end' <<< "${raw}" 2>/dev/null) || {
+        echo "  [!] KestrelPro: couldn't read webserver.headers; add http://*:${port} to connect-src yourself"
+        return 0
+    }
+    new=$(jq -c --arg needle "connect-src 'self'" --arg src "http://*:${port}" \
+        'map(if startswith("Content-Security-Policy:") and (contains($src) | not)
+             then sub($needle; $needle + " " + $src) else . end)' <<< "${headers}" 2>/dev/null) || return 0
+    if [ -n "${new}" ] && [ "${headers}" != "${new}" ]; then
+        if setFTLConfigValue webserver.headers "${new}"; then
+            echo "  [i] KestrelPro: allowed the admin UI to reach the engine on port ${port} (Content-Security-Policy)"
+        else
+            echo "  [!] KestrelPro: couldn't update webserver.headers; set KESTREL_ENGINE_URL or allow port ${port} in connect-src"
+        fi
+    fi
+}
+
 start_kestrel_engine() {
     if [ "${KESTREL_ENGINE:-on}" = "off" ]; then
         echo "  [i] KestrelPro engine is off (KESTREL_ENGINE=off): DNS and admin only"

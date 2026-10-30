@@ -44,6 +44,10 @@ start() {
     echo "  [i] Starting FTL configuration"
     ftl_config
 
+    # kestrelpro:begin tell the admin UI where the engine is
+    prepare_kestrel_ui
+    # kestrelpro:end
+
     # Install additional packages inside the container if requested
     install_additional_packages
 

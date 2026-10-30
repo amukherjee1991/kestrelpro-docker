@@ -117,7 +117,6 @@ ARG KESTREL_UID=1001
 RUN apk add --no-cache python3 py3-flask py3-requests py3-waitress su-exec && \
     adduser -S -D -H -h /etc/kestrel -G pihole -u ${KESTREL_UID} kestrel
 COPY --from=kestrelpro-engine kestrel_engine /opt/kestrel-engine/kestrel_engine
-COPY --from=kestrelpro-engine static /opt/kestrel-engine/static
 COPY --chmod=0755 kestrelpro.sh /usr/bin/kestrelpro.sh
 ENV KESTREL_ENGINE=on \
     DB_PATH=/etc/kestrel/kestrel.db \
