@@ -1,5 +1,10 @@
 # syntax=docker/dockerfile:1
-ARG FTL_SOURCE=remote
+# kestrelpro:begin pinned FTL + local fork contexts
+# FTL_SOURCE=pinned downloads one FTL release and checks its SHA-256 (see pinned-ftl-install).
+# The web fork and the engine come from named build contexts:
+#   docker buildx build src --build-context kestrelpro-web=../web --build-context kestrelpro-engine=../engine
+ARG FTL_SOURCE=pinned
+# kestrelpro:end
 # Pull Stable images
 FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS base
 
@@ -67,10 +72,14 @@ RUN clone_repo() { \
         fi; \
         git clone --branch "$CLONE_BRANCH" --single-branch --depth 1 "https://github.com/${FORK}/${REPO}.git" "$DEST"; \
         cd "$DEST"; \
-        if [ "$BRANCH" = "master" ]; then git checkout -b master; fi; \
+        # kestrelpro: also name the branch when a tag was cloned directly (detached HEAD)
+        if [ "$BRANCH" = "master" ] || ! git symbolic-ref -q HEAD >/dev/null; then git checkout -b master; fi; \
     }; \
-    clone_repo "${WEB_FORK}" "web" "${WEB_BRANCH}" "/var/www/html/admin"; \
     clone_repo "${CORE_FORK}" "pi-hole" "${CORE_BRANCH}" "/etc/.pihole"
+
+# kestrelpro:begin web fork from the kestrelpro-web build context instead of a GitHub clone
+COPY --from=kestrelpro-web . /var/www/html/admin
+# kestrelpro:end
 
 
 RUN cd /etc/.pihole && \
@@ -102,6 +111,20 @@ COPY --chmod=0755 bash_functions.sh /usr/bin/bash_functions.sh
 COPY --chmod=0755 prefix-time.sh /usr/bin/prefix-time.sh
 COPY --chmod=0755 start.sh /usr/bin/start.sh
 COPY crontab.txt /crontab.txt
+
+# kestrelpro:begin review engine (runs next to FTL, supervised by kestrelpro.sh)
+ARG KESTREL_UID=1001
+RUN apk add --no-cache python3 py3-flask py3-requests py3-waitress su-exec && \
+    adduser -S -D -H -h /etc/kestrel -G pihole -u ${KESTREL_UID} kestrel
+COPY --from=kestrelpro-engine kestrel_engine /opt/kestrel-engine/kestrel_engine
+COPY --from=kestrelpro-engine static /opt/kestrel-engine/static
+COPY --chmod=0755 kestrelpro.sh /usr/bin/kestrelpro.sh
+ENV KESTREL_ENGINE=on \
+    DB_PATH=/etc/kestrel/kestrel.db \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+EXPOSE 8090
+# kestrelpro:end
 
 # For nightly images, we install gdb and screen for ease of debugging (this is
 # not included in the default image to keep it small), and also prepare the
@@ -144,6 +167,21 @@ FROM base AS local-ftl-install
 # pihole-FTL must be built from source and copied to the src directory first!
 COPY --chmod=0755 pihole-FTL /usr/bin/pihole-FTL
 RUN  readelf -h /usr/bin/pihole-FTL || (echo "Error with local FTL binary" && exit 1)
+
+# kestrelpro:begin pinned FTL: one release, checked against a SHA-256 recorded here
+FROM base AS pinned-ftl-install
+ARG TARGETPLATFORM
+ARG FTL_VERSION=v6.8
+ARG FTL_SHA256_AMD64=1f511e7053a5ddfae1db1f439ebb986dd8025bf7223e1f70fb8087d9c0fd2b0e
+RUN if [ -n "$TARGETPLATFORM" ] && [ "$TARGETPLATFORM" != "linux/amd64" ]; then \
+        echo "FTL_SOURCE=pinned has a checksum for linux/amd64 only (got $TARGETPLATFORM)"; exit 1; \
+    fi \
+    && curl -fsSL "https://github.com/pi-hole/FTL/releases/download/${FTL_VERSION}/pihole-FTL-amd64" -o /usr/bin/pihole-FTL \
+    && echo "${FTL_SHA256_AMD64}  /usr/bin/pihole-FTL" | sha256sum -c - \
+    && chmod +x /usr/bin/pihole-FTL \
+    && readelf -h /usr/bin/pihole-FTL >/dev/null \
+    && /usr/bin/pihole-FTL -vv
+# kestrelpro:end
 
 # Use the appropriate FTL Install stage based on the FTL_SOURCE build-arg
 FROM ${FTL_SOURCE}-ftl-install AS final

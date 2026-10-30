@@ -11,6 +11,11 @@ fi
 
 trap stop TERM INT QUIT HUP ERR
 
+# kestrelpro:begin
+# shellcheck source=/dev/null
+. /usr/bin/kestrelpro.sh
+# kestrelpro:end
+
 CAPSH_PID=""
 TRAP_TRIGGERED=0
 
@@ -87,6 +92,10 @@ start() {
     printf "%b" "${versionsOutput}\\n" | sed 's/^/      /'
     echo ""
 
+    # kestrelpro:begin review engine, only once FTL is up
+    start_kestrel_engine
+    # kestrelpro:end
+
     if [ "${TAIL_FTL_LOG:-1}" -eq 1 ]; then
         # Start tailing the FTL log file from the EOF position we recorded on container start
         tail -F -c +$((startFrom + 1)) -- "${FTLlogFile}" &
@@ -108,6 +117,10 @@ start() {
 
 stop() {
     local FTL_EXIT_CODE=$1
+
+    # kestrelpro:begin
+    stop_kestrel_engine
+    # kestrelpro:end
 
     # if we have nothing in FTL_EXIT_CODE, then have been called by the trap. Close FTL and wait for the CAPSH_PID to finish
     if [ -z "${FTL_EXIT_CODE}" ]; then
