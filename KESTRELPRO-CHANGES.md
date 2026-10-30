@@ -35,3 +35,10 @@ by the KestrelPro project; every changed upstream line is marked `kestrelpro:beg
   publishing, scheduled stale bots, dependabot, issue templates, CODEOWNERS) and `AGENTS.md`:
   they automate the upstream project, not this one.
 - `README.md` replaced with a KestrelPro one. `LICENSE` is unchanged.
+
+## 2026-10-30: Raspberry Pi and other platforms
+
+- `src/Dockerfile`: the pinned FTL stage covers linux/amd64, linux/arm64 (Raspberry Pi 3/4/5,
+  64-bit OS), linux/arm/v7 (32-bit OS) and linux/arm/v6 (Pi Zero / Pi 1), each binary checked
+  against a SHA-256 recorded here (verified against the v6.8 release's `.sha1` files).
+  amd64, arm64 and armv7 builds tested; arm64 also run (DNS, blocking, admin UI, engine).

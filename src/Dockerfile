@@ -167,16 +167,25 @@ FROM base AS local-ftl-install
 COPY --chmod=0755 pihole-FTL /usr/bin/pihole-FTL
 RUN  readelf -h /usr/bin/pihole-FTL || (echo "Error with local FTL binary" && exit 1)
 
-# kestrelpro:begin pinned FTL: one release, checked against a SHA-256 recorded here
+# kestrelpro:begin pinned FTL: one release per platform, each checked against a SHA-256 recorded here
+# (verified against the release's own .sha1 files when pinned). Raspberry Pi: arm64 (Pi 3/4/5,
+# 64-bit OS), armv7 (32-bit OS), armv6 (Pi Zero / Pi 1).
 FROM base AS pinned-ftl-install
 ARG TARGETPLATFORM
 ARG FTL_VERSION=v6.8
 ARG FTL_SHA256_AMD64=1f511e7053a5ddfae1db1f439ebb986dd8025bf7223e1f70fb8087d9c0fd2b0e
-RUN if [ -n "$TARGETPLATFORM" ] && [ "$TARGETPLATFORM" != "linux/amd64" ]; then \
-        echo "FTL_SOURCE=pinned has a checksum for linux/amd64 only (got $TARGETPLATFORM)"; exit 1; \
-    fi \
-    && curl -fsSL "https://github.com/pi-hole/FTL/releases/download/${FTL_VERSION}/pihole-FTL-amd64" -o /usr/bin/pihole-FTL \
-    && echo "${FTL_SHA256_AMD64}  /usr/bin/pihole-FTL" | sha256sum -c - \
+ARG FTL_SHA256_ARM64=e728cbcffa43b23e3b06fc10faa2fb0a22399d5931fc9881e4007491ee978e6f
+ARG FTL_SHA256_ARMV7=7c4b59b1f62554dbf3e992013959224a52c4ae69ee8f29708ce756cea051a88f
+ARG FTL_SHA256_ARMV6=84fddcea66adebc09fe7c65e42f75aedc2f9c61b2089139193d21a670de00bae
+RUN case "${TARGETPLATFORM:-linux/amd64}" in \
+        linux/amd64)  FTLARCH=amd64; SUM="${FTL_SHA256_AMD64}" ;; \
+        linux/arm64)  FTLARCH=arm64; SUM="${FTL_SHA256_ARM64}" ;; \
+        linux/arm/v7) FTLARCH=armv7; SUM="${FTL_SHA256_ARMV7}" ;; \
+        linux/arm/v6) FTLARCH=armv6; SUM="${FTL_SHA256_ARMV6}" ;; \
+        *) echo "FTL_SOURCE=pinned has no checksum for ${TARGETPLATFORM}"; exit 1 ;; \
+    esac \
+    && curl -fsSL "https://github.com/pi-hole/FTL/releases/download/${FTL_VERSION}/pihole-FTL-${FTLARCH}" -o /usr/bin/pihole-FTL \
+    && echo "${SUM}  /usr/bin/pihole-FTL" | sha256sum -c - \
     && chmod +x /usr/bin/pihole-FTL \
     && readelf -h /usr/bin/pihole-FTL >/dev/null \
     && /usr/bin/pihole-FTL -vv
