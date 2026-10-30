@@ -28,3 +28,10 @@ by the KestrelPro project; every changed upstream line is marked `kestrelpro:beg
   allows `'self'` only. Custom headers it can't parse are left alone, with a warning.
 - `src/start.sh`: calls it right after `ftl_config`.
 - `src/Dockerfile`: the engine no longer ships its own dashboard.
+
+## 2026-10-30: Repository housekeeping
+
+- Removed upstream's `.github/` (CI workflows including the nightly image build and Docker Hub
+  publishing, scheduled stale bots, dependabot, issue templates, CODEOWNERS) and `AGENTS.md`:
+  they automate the upstream project, not this one.
+- `README.md` replaced with a KestrelPro one. `LICENSE` is unchanged.
